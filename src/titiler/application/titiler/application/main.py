@@ -1,9 +1,11 @@
 """titiler app."""
 
 import logging
+from typing import Dict, Any
 
 import jinja2
 from fastapi import FastAPI
+from rasterio.session import GSSession
 from rio_tiler.io import STACReader
 from starlette.middleware.cors import CORSMiddleware
 from starlette.requests import Request
@@ -12,7 +14,7 @@ from starlette.templating import Jinja2Templates
 from starlette_cramjam.middleware import CompressionMiddleware
 
 from titiler.application import __version__ as titiler_version
-from titiler.application.settings import ApiSettings
+from titiler.application.settings import ApiSettings, CredentialsSettings
 from titiler.core.errors import DEFAULT_STATUS_CODES, add_exception_handlers
 from titiler.core.factory import (
     AlgorithmFactory,
@@ -44,7 +46,6 @@ templates = Jinja2Templates(
     loader=jinja2.ChoiceLoader([jinja2.PackageLoader(__package__, "templates")]),
 )  # type:ignore
 
-
 api_settings = ApiSettings()
 
 app = FastAPI(
@@ -65,11 +66,21 @@ app = FastAPI(
     root_path=api_settings.root_path,
 )
 
+credentials_settings = CredentialsSettings()
+
+def env_settings() -> Dict:
+    if not credentials_settings.GOOGLE_APPLICATION_CREDENTIALS:
+        return {"session": GSSession(google_application_credentials=credentials_settings.GOOGLE_APPLICATION_CREDENTIALS)}
+    else:
+        return {}
+
+
 ###############################################################################
 # Simple Dataset endpoints (e.g Cloud Optimized GeoTIFF)
 if not api_settings.disable_cog:
     cog = TilerFactory(
         router_prefix="/cog",
+        environment_dependency=env_settings,
         extensions=[
             cogValidateExtension(),
             cogViewerExtension(),
@@ -79,13 +90,13 @@ if not api_settings.disable_cog:
 
     app.include_router(cog.router, prefix="/cog", tags=["Cloud Optimized GeoTIFF"])
 
-
 ###############################################################################
 # STAC endpoints
 if not api_settings.disable_stac:
     stac = MultiBaseTilerFactory(
         reader=STACReader,
         router_prefix="/stac",
+        environment_dependency=env_settings,
         extensions=[
             stacViewerExtension(),
         ],
@@ -98,7 +109,10 @@ if not api_settings.disable_stac:
 ###############################################################################
 # Mosaic endpoints
 if not api_settings.disable_mosaic:
-    mosaic = MosaicTilerFactory(router_prefix="/mosaicjson")
+    mosaic = MosaicTilerFactory(
+        router_prefix="/mosaicjson",
+        environment_dependency=env_settings,
+    )
     app.include_router(mosaic.router, prefix="/mosaicjson", tags=["MosaicJSON"])
 
 ###############################################################################

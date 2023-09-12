@@ -31,3 +31,9 @@ class ApiSettings(BaseSettings):
     def parse_cors_allow_methods(cls, v):
         """Parse CORS allowed methods."""
         return [method.strip().upper() for method in v.split(",")]
+
+
+class CredentialsSettings(BaseSettings):
+    """Credentials settings"""
+
+    GOOGLE_APPLICATION_CREDENTIALS: str = ""
